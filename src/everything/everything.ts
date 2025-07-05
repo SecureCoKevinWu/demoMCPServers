@@ -32,6 +32,10 @@ const ToolInputSchema = ToolSchema.shape.inputSchema;
 type ToolInput = z.infer<typeof ToolInputSchema>;
 
 /* Input schemas for tools implemented in this server */
+const VoiceAgentSchema = z.object({
+  conversation: z.string().describe("Summary of the conversation"),
+});
+
 const EchoSchema = z.object({
   message: z.string().describe("Message to echo"),
 });
@@ -87,6 +91,7 @@ const GetResourceReferenceSchema = z.object({
 });
 
 enum ToolName {
+  VOICE_AGENT = "voiceAgent",
   ECHO = "echo",
   ADD = "add",
   LONG_RUNNING_OPERATION = "longRunningOperation",
@@ -416,6 +421,11 @@ export const createServer = () => {
   server.setRequestHandler(ListToolsRequestSchema, async () => {
     const tools: Tool[] = [
       {
+        name: ToolName.VOICE_AGENT,
+        description: "Summarizes and analyzes a conversation and provides an emotional analysis of the conversation if it's not neutral. If it contains a question, you need to answer it. If it contains actions, you need to provide a list of action items.",
+        inputSchema: zodToJsonSchema(VoiceAgentSchema) as ToolInput,
+      },
+      {
         name: ToolName.ECHO,
         description: "Echoes back the input",
         inputSchema: zodToJsonSchema(EchoSchema) as ToolInput,
@@ -467,10 +477,20 @@ export const createServer = () => {
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: args } = request.params;
 
+    if (name === ToolName.VOICE_AGENT) {
+      const validatedArgs = VoiceAgentSchema.parse(args);
+
+      const response = await getOpenAIResponse(validatedArgs.conversation);
+
+      return {
+        content: [{ type: "text", text: `Voice Agent: ${response}` }],
+      };
+    }
+
     if (name === ToolName.ECHO) {
       const validatedArgs = EchoSchema.parse(args);
       return {
-        content: [{ type: "text", text: `Echo: ${validatedArgs.message}` }],
+        content: [{ type: "text", text: `Echo v2: ${validatedArgs.message}` }],
       };
     }
 
@@ -704,6 +724,27 @@ export const createServer = () => {
   };
 
   return { server, cleanup };
+};
+
+const getOpenAIResponse = async (conversation: string) => {
+      const response = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: "gpt-4o-mini",
+          messages: [
+            { role: "system", content: "You are a voice agent. You are given a conversation  and you need to summarize it and provide an emotional analysis of the conversation if it's not neutral. If it contains a question, you need to answer it. If it contains actions, you need to provide a list of action items." },
+            { role: "user", content: conversation }
+          ],
+        }),
+      });
+
+      const data = await response.json();
+      const message = data.choices[0].message.content;
+      return message;
 };
 
 const MCP_TINY_IMAGE =
