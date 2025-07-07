@@ -29,6 +29,7 @@
     "zod-to-json-schema": "^3.24.6"
   },
   "devDependencies": {
+    "@types/express": "^5.0.3",
     "@types/node": "^22",
     "@types/yargs": "^17.0.32",
     "shx": "^0.3.4",
